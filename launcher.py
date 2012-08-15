@@ -45,9 +45,7 @@ class Namelist(dict):
     """
     # This should hold specific values of input parameters,
     # either from having been read in, or from being created
-    
-    def __init_(self, name):
-        self.name = name
+    pass
     
     
 class InputFile(dict):
@@ -83,6 +81,20 @@ def str_param(param_object, name, param_desc, default=None):
 
 def bool_param(param_object, name, param_desc, default=None):
     """ A Traits object for a Fortran logical parameter """
+    if default is None:
+        default = False
+    param_object.add_trait('value',Bool(default,label=name,desc=param_desc))
+
+def complex_param(param_object, name, param_desc, default=None):
+    """ A Traits object for a Fortran complex parameter """
+    if default is None:
+        default = False
+    param_object.add_trait('value',Bool(default,label=name,desc=param_desc))
+
+def enum_param(param_object, name, param_desc, default=None):
+    """ 
+    A Traits object for a Fortran parameter which can only take certain values
+    """
     if default is None:
         default = False
     param_object.add_trait('value',Bool(default,label=name,desc=param_desc))
@@ -245,7 +257,7 @@ def generate_namelist_from_source():
     # will contain the default values as traits.
     full_dict = {}
     for key in nml_dict.iterkeys():
-        full_dict[key] = namelist(name=key)
+        full_dict[key] = namelist()
         for item in nml_dict[key]:
             full_dict[key][item] = InputParam(item)
         
@@ -269,17 +281,31 @@ def write_generated_namelist(nml_file=None, nml_dict=None):
         # No namelist specified
         return None
     else:
-        # Open file
-        fil=file(nml_file,'w')
-        
-        # Use a try, finally block to ensure file is always closed
-        try:
-            # Write file
-            fil.write('""" Some header block """')
-        finally:
-            fil.close()
+        top = Element('top')
+        namelists = {}
+        children = {}
+        for key in nml_dict.keys():
+            tmp = Element('namelist',name=key)
+            for i in nml_dict[key]:
+                children[i] = Element('parameter',
+                                      name=i,
+                                      type=nml_dict[key][i].type)
+                default = SubElement(children[i],'default')
+                default.text = str(nml_dict[key][i].default)
+                desc = SubElement(children[i],'description')
+                desc.text = nml_dict[key][i].description
 
-    return fil
+            tmp.extend(children.values())
+            top.append(tmp)
+            children = {}
+
+        # Open file
+        with file(nml_file,'w') as f:
+            f.write(prettify(top))
+            
+    return top
+
+    # return fil
 
 
 def read_inputfile():
