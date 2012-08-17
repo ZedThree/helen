@@ -1,6 +1,7 @@
 from enthought.traits.api import *
 from enthought.traits.ui.api import *
-from xml.etree.ElementTree import Element, SubElement, Comment
+from xml.etree.ElementTree import Element, SubElement, Comment, ElementTree
+from xml.etree.ElementTree import XMLTreeBuilder
 from ElementTree_pretty import prettify
 
 import re
@@ -9,21 +10,78 @@ import copy
 readinputfile='/home/peter/nemorb/peter/src/readinput.F90'
 globalfile='/home/peter/nemorb/peter/src/globals.F90'
 
+class InputXMLToNamelist(object):
+
+    def __init__(self, outDict):
+        self.outDict = outDict
+        self.namelist_name = ''
+        self.param_name = ''
+        return
+
+    def start(self, tag, attrib):
+        if tag == 'namelist':
+            # Make a new namelist object
+            # 'name' attrib as key
+            self.namelist_name = attrib['name']
+            self.outDict[self.namelist_name] = namelist()
+        if tag == 'parameter':
+            # Get the parameter name and type
+            # We'll need them when the parameter tag is closed
+            self.param_name = attrib['name']
+            self.param_type = attrib['type']
+        else:
+            # Only other tags are default and description
+            self.tag = tag
+            
+    def data(self, data):
+        if self.tag == 'default':
+            self.param_default = data
+        elif self.tag == 'description':
+            self.param_desc = data
+
+    def end(self, tag):
+        if tag == 'parameter':
+            # Actually create InputParam object when closing a parameter tag
+            self.outDict[self.namelist_name][self.param_name] = InputParam(
+                self.param_name,
+                param_type = self.param_type,
+                param_default = self.param_default,
+                param_desc = self.param_desc)
+    
+    def close(self):
+        # Nothing needs doing
+        return
+    
+
 class InputParam(HasTraits):
     """ An input parameter """
     
     view = View(Item(name = 'value'),
                 buttons = [OKButton, CancelButton])
 
-    def __init__(self, param_name, species=None):
-        self.type = get_type(globalfile, param_name)
-        # N.B. Need to implement a different get_default for parameters
-        #      in 'attributes' namelist - also for electrons!
-        self.default = get_default(globalfile, param_name)
-        self.description = get_desc(readinputfile, param_name)
+    def __init__(self, param_name, param_type=None, param_default=None,
+                 param_desc=None, species=None):
+        if param_type is not None:
+            self.type = param_type
+        else:
+            self.type = get_type(globalfile, param_name)
+            
+        if param_default is not None:
+            self.default = param_default
+        else:
+            self.default = get_default(globalfile, param_name)
+            # N.B. Need to implement a different get_default for parameters
+            #      in 'attributes' namelist - also for electrons!
+
+        if param_desc is not None:
+            self.description = param_desc
+        else:
+            self.description = get_desc(readinputfile, param_name)
+            
         # if species is not None:
-        #     # This will be important later
-        #     # This means we'll want to check readinputfile, not globalfile
+        # This will be important later
+        # This means we'll want to check readinputfile, not globalfile
+
         if self.type is 'float':
             real_param(self, name=param_name, default=self.default,
                        param_desc=self.description)
@@ -45,6 +103,8 @@ class Namelist(dict):
     """
     # This should hold specific values of input parameters,
     # either from having been read in, or from being created
+
+    # Need to add an update method
     pass
     
     
@@ -264,10 +324,18 @@ def generate_namelist_from_source():
     return full_dict
 
 
-def read_generated_namelist():
+def read_generated_namelist(nml_file=None):
     """
     This will read a set of previously generated namelists from a file.
     """
+
+    if not nml_file:
+        # No file specified
+        return None
+    else:
+        with open(nml_file,'rt') as f:
+            tree = ElementTree.parse(f)
+            
 
 def write_generated_namelist(nml_file=None, nml_dict=None):
     """
