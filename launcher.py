@@ -23,7 +23,7 @@ class InputXMLToNamelist(object):
             # Make a new namelist object
             # 'name' attrib as key
             self.namelist_name = attrib['name']
-            self.outDict[self.namelist_name] = namelist()
+            self.outDict[self.namelist_name] = Namelist()
         if tag == 'parameter':
             # Get the parameter name and type
             # We'll need them when the parameter tag is closed
@@ -34,10 +34,18 @@ class InputXMLToNamelist(object):
             self.tag = tag
             
     def data(self, data):
+        # For some reason, these tags get read 5 times, and all but once
+        # are just whitespace/newlines!
+        # So, strip all whitespace, and only use the one that isn't empty
         if self.tag == 'default':
-            self.param_default = data
+            if data.strip() != '':
+                if data.strip() == 'None':
+                    self.param_default = None
+            	else:
+                    self.param_default = data.strip()
         elif self.tag == 'description':
-            self.param_desc = data
+            if data.strip() != '':
+                self.param_desc = data.strip()
 
     def end(self, tag):
         if tag == 'parameter':
@@ -77,21 +85,20 @@ class InputParam(HasTraits):
             self.description = param_desc
         else:
             self.description = get_desc(readinputfile, param_name)
-            
         # if species is not None:
         # This will be important later
         # This means we'll want to check readinputfile, not globalfile
 
-        if self.type is 'float':
+        if self.type == 'float':
             real_param(self, name=param_name, default=self.default,
                        param_desc=self.description)
-        if self.type is 'int':
+        if self.type == 'int':
             int_param(self, name=param_name, default=self.default,
                       param_desc=self.description)
-        if self.type is 'str':
+        if self.type == 'str':
             str_param(self, name=param_name, default=self.default,
                       param_desc=self.description)
-        if self.type is 'bool':
+        if self.type == 'bool':
             bool_param(self, name=param_name, default=self.default,
                        param_desc=self.description)
             
@@ -125,31 +132,49 @@ def real_param(param_object, name, param_desc, default=None):
     """ Adds a Traits object for a Fortran real parameter """
     if default is None:
         default = 0.0
+    else:
+        default = float(default)
+    param_object.default = default
     param_object.add_trait('value',Float(default,label=name,desc=param_desc))
 
 def int_param(param_object, name, param_desc, default=None):
     """ A Traits object for a Fortran integer parameter """
     if default is None:
         default = 0
+    else:
+        default = int(default)
+    param_object.default = default
     param_object.add_trait('value',CInt(default,label=name,desc=param_desc))
 
 def str_param(param_object, name, param_desc, default=None):
     """ A Traits object for a Fortran character parameter """
     if default is None:
         default = ''
+    else:
+        default = str(default)
+    param_object.default = default
     param_object.add_trait('value',String(default,label=name,desc=param_desc))
 
 def bool_param(param_object, name, param_desc, default=None):
     """ A Traits object for a Fortran logical parameter """
-    if default is None:
+    # A true value can have several forms in FORTRAN, so search for all of them
+    # Assume anything else means FALSE
+    grepTrue = re.compile(r"(true|t|1)",re.I)
+    if grepTrue.search(str(default)):
+        default = True
+    else:
         default = False
+    param_object.default = default
     param_object.add_trait('value',Bool(default,label=name,desc=param_desc))
 
 def complex_param(param_object, name, param_desc, default=None):
     """ A Traits object for a Fortran complex parameter """
     if default is None:
-        default = False
-    param_object.add_trait('value',Bool(default,label=name,desc=param_desc))
+        default = complex(0)
+    else:
+        default = complex(default)
+    param_object.default = default
+    param_object.add_trait('value',Complex(default,label=name,desc=param_desc))
 
 def enum_param(param_object, name, param_desc, default=None):
     """ 
@@ -157,7 +182,8 @@ def enum_param(param_object, name, param_desc, default=None):
     """
     if default is None:
         default = False
-    param_object.add_trait('value',Bool(default,label=name,desc=param_desc))
+    param_object.default = default
+    param_object.add_trait('value',Enum(default,label=name,desc=param_desc))
 
 class scan_param(HasTraits):
     """ Choose which parameter to scan over """
@@ -317,7 +343,7 @@ def generate_namelist_from_source():
     # will contain the default values as traits.
     full_dict = {}
     for key in nml_dict.iterkeys():
-        full_dict[key] = namelist()
+        full_dict[key] = Namelist()
         for item in nml_dict[key]:
             full_dict[key][item] = InputParam(item)
         
@@ -333,9 +359,15 @@ def read_generated_namelist(nml_file=None):
         # No file specified
         return None
     else:
+        read_dict = {}
+        target = InputXMLToNamelist(read_dict)
+        parser = XMLTreeBuilder(target=target)
         with open(nml_file,'rt') as f:
-            tree = ElementTree.parse(f)
-            
+            for line in f:
+                parser.feed(line)
+        parser.close()
+        
+    return read_dict
 
 def write_generated_namelist(nml_file=None, nml_dict=None):
     """
@@ -384,6 +416,8 @@ def read_inputfile():
     # inputfile = {0:{'BASIC': ...}, ...}
     # with the different namelists being copy.deepcopy() of the namelist objects!
     # Then we can have multiple copies of the same namelist.
+    
+
 
 def write_inputfile():
     """
@@ -391,6 +425,18 @@ def write_inputfile():
     """
 
 if __name__ == "__main__":
-    inputfile = InputFile()
-    inputfile.configure_traits()
-    inputfile.WriteInputFile()
+
+# Ask user for number of species
+
+# Make copies of all namelists into dictionary like
+#{'0' : {'NUMBER_OF_SPECIES' : }
+# '1' : {'BASIC' : }
+# ...
+# N : {'TYPE_SPECIES' : }}
+
+# Ask user what parameters they want to scan over
+
+# Write the input file
+
+
+    pass
